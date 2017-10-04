@@ -1,3 +1,23 @@
+// *************************************************************
+// 
+// pkmeans Parallel K-Means Algorithm Implementation
+// initial code by Bradley Morgan
+// October 2017
+//
+// The k-means clustering algorithm is used to 
+// perform grouping of data points based on their
+// proximity to a randomly chosen centroid
+//
+// Algorithm Steps
+// 1. Read in all data elements into i 
+// 2. Randomly select k centroids
+// 3. Find the closest centroid for each data element
+// 4. Recalculate the centroid point 
+// 5. Recalculate the closest centroid for each data element
+// 6. Stop when no elements are changed
+//
+// ************************************************************
+ 
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -5,10 +25,12 @@
 #include <float.h>
 #include <mpi.h>
 
-#define DEBUG
+#define DEBUG // remove to disable verbose output
 
-int i = 0;
-int k = 0;
+int i = 0; // number of points in input file
+int k = 0; // number of centroids to use
+
+// data structure to store points and their grouping
 
 typedef struct point {
    long x, y;
@@ -19,14 +41,19 @@ typedef struct point {
 point *points;
 point *centroids;
 
+// debug print macro
+
 #define dbprintf(msg, args...) \
    	int rank; \
         MPI_Comm_rank(MPI_COMM_WORLD, &rank); \
 	printf("%i:%d:%s(): ", rank, __LINE__, __func__); \
 	printf(msg, ##args);
 
+
 point *find_centroids(int n) {
 
+   // select random centroids from the set of i input points
+   
    int j=0;
    
    for(j=0; j<=n; j++) {
@@ -44,6 +71,8 @@ point *find_centroids(int n) {
 
 double pdistance(point *p1, point *p2) {
 
+   // calculates the distance between two points
+   
    dbprintf("distance between (%d, %d) and (%d, %d) = ", p1->x, p1->y, p2->x, p2->y);
 
    double dx = (p1->x - p2->x) * (p1->x - p2->x);
@@ -56,6 +85,9 @@ double pdistance(point *p1, point *p2) {
 }
 
 void pcentroid(point *p) {
+
+   // given a point p, find the closest centroid and assign it
+   // as the point's centroid property
 
    double cdist = 9999999;
    point *c = &centroids[0];
@@ -90,6 +122,8 @@ void pcentroid(point *p) {
 
 int main(int argc, const char *argv[]) {
 
+    // initialize MPI for future paralellization
+
     int rank,nprocs;
     char **pargv;
 
@@ -97,14 +131,18 @@ int main(int argc, const char *argv[]) {
     MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
+    // allocate memory for centroids to be used globally
+    
     centroids = (point *) malloc(sizeof(point) * 6) ;
 
-    if ( argc != 3 ) {
+    if ( argc != 3 ) {   // check passed arguments
         
         dbprintf("usage: %s <filename> <num_centroids>\n", argv[0]);
     
     } else {
        
+        // read data points from input
+
         FILE *input = fopen(argv[1], "r");
 	
 	k = atoi(argv[2]);
@@ -130,11 +168,16 @@ int main(int argc, const char *argv[]) {
             
         }
 	
-	point *centroids = find_centroids(k);     
+	point *centroids = find_centroids(k); // get centroids
+ 
  	point *t = (point *) malloc(sizeof(point));
 
 	int n=0;
-	 
+	
+	// for each data point find the closest centroid
+	// TODO: add additional loops for cluster normalization
+	// TODO: parallelize this iteration with MPI
+	
 	for(n=0; n<=i; n++) {
 		t = &points[n];
 		dbprintf("checking x=%d, y=%d.\n", t->x, t->y);
