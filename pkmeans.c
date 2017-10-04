@@ -1,19 +1,29 @@
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
 #include <float.h>
 #include <mpi.h>
 
+#define DEBUG
+
 int i = 0;
 int k = 0;
 
 typedef struct point {
    long x, y;
-   struct point *c;
+   struct point *centroid;
+   int cluster;
 } point;
 
 point *points;
 point *centroids;
+
+#define dbprintf(msg, args...) \
+   	int rank; \
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank); \
+	printf("%i:%d:%s(): ", rank, __LINE__, __func__); \
+	printf(msg, ##args);
 
 point *find_centroids(int n) {
 
@@ -24,7 +34,7 @@ point *find_centroids(int n) {
       int rnd = rand() % i;
       centroids[j] = points[rnd];
 
-      printf("Index %d selected as centroid: x=%d, y=%d.\n", rnd, centroids[j].x, centroids[j].y);
+      dbprintf("Index %d selected as centroid: x=%d, y=%d.\n", rnd, centroids[j].x, centroids[j].y);
 
    }
 
@@ -34,7 +44,7 @@ point *find_centroids(int n) {
 
 double pdistance(point *p1, point *p2) {
 
-   printf("distance between (%d, %d) and (%d, %d) = ", p1->x, p1->y, p2->x, p2->y);
+   dbprintf("distance between (%d, %d) and (%d, %d) = ", p1->x, p1->y, p2->x, p2->y);
 
    double dx = (p1->x - p2->x) * (p1->x - p2->x);
    double dy = (p1->y - p2->y) * (p1->y - p2->y);
@@ -47,41 +57,51 @@ double pdistance(point *p1, point *p2) {
 
 void pcentroid(point *p) {
 
-   double curr = 9999999;
-   point *centroid = &centroids[0];
+   double cdist = 9999999;
+   point *c = &centroids[0];
 
+   int m=0;
    int n=0;
 
    for(n=0; n<=5; n++) {
 
-      double distance = pdistance(p, &centroids[n]);
+      double dist = pdistance(p, &centroids[n]);
 
-      printf("current = %f | calculated = %f\n", curr, distance);
+      dbprintf("current = %f | calculated = %f\n", cdist, dist);
 		
-      if(distance < curr) {
+      if(dist < cdist) {
          
-	 printf("Cluster change found for (%d, %d).\n", p->x, p->y); 
-         curr = distance;
-	 centroid = &centroids[n];
+	 dbprintf("cluster change found for (%d, %d).\n", p->x, p->y); 
+         cdist = dist;
+	 c = &centroids[n];
+	 m = n;
  
       }
 
    }
 
-   printf("Centroid x=%d, y=%d is closest.\n", centroid->x, centroid->y); 
+   dbprintf("centroid x=%d, y=%d is closest.\n", c->x, c->y); 
    
-   p->c = centroid;
+   p->centroid = c;
+   p->cluster = m;
 
 }
 
 
-int main(int argc, const char * argv[]) {
+int main(int argc, const char *argv[]) {
+
+    int rank,nprocs;
+    char **pargv;
+
+    MPI_Init(&argc, &pargv);
+    MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
     centroids = (point *) malloc(sizeof(point) * 6) ;
-    
+
     if ( argc != 3 ) {
         
-        printf("usage: %s <filename> <num_centroids>\n", argv[0]);
+        dbprintf("usage: %s <filename> <num_centroids>\n", argv[0]);
     
     } else {
        
@@ -91,7 +111,7 @@ int main(int argc, const char * argv[]) {
         
         if (NULL == input) {
         
-            printf("ERROR: Could not open input file.\n");
+            dbprintf("[ERROR] could not open input file.\n");
         
         } else {
 	    
@@ -106,23 +126,26 @@ int main(int argc, const char * argv[]) {
                 
             }
           
-            printf("Found %d points in input file.\n", i);
+            dbprintf("found %d points in input file.\n", i);
             
         }
-
+	
 	point *centroids = find_centroids(k);     
  	point *t = (point *) malloc(sizeof(point));
 
 	int n=0;
- 
+	 
 	for(n=0; n<=i; n++) {
 		t = &points[n];
-		printf("Checking x=%d, y=%d.\n", t->x, t->y);
+		dbprintf("checking x=%d, y=%d.\n", t->x, t->y);
 		pcentroid(t);
 	} 
 
     }
+
+    MPI_Finalize();
     
     return 0;
     
 }
+
