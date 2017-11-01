@@ -23,23 +23,28 @@
 #include <stdlib.h>
 #include <math.h>
 #include <float.h>
+#include <limits.h>
 #include <mpi.h>
 
 #define DEBUG // remove to disable verbose output
 
-int i = 0; // number of points in input file
+int n = 0; // number of points in input file
 int k = 0; // number of centroids to use
 
 // data structure to store points and their grouping
 
 typedef struct point {
    long x, y;
-   struct point *centroid;
-   int cluster;
 } point;
 
+typedef struct cluster {
+    int id;
+    point centroid;
+    point *instances;
+} cluster;
+
 point *points;
-point *centroids;
+cluster *clusters;
 
 // debug print macro
 
@@ -50,30 +55,30 @@ point *centroids;
 	printf(msg, ##args);
 
 
-point *find_centroids(int n) {
+void init_centroids() {
 
    // select random centroids from the set of i input points
    
-   int j=0;
+   int i=0;
    
-   for(j=0; j<=n; j++) {
+   for(i=0; i<=k; i++) {
 
-      int rnd = rand() % i;
-      centroids[j] = points[rnd];
-
-      dbprintf("Index %d selected as centroid: x=%d, y=%d.\n", rnd, centroids[j].x, centroids[j].y);
+      int rnd = rand() % n;
+       
+      clusters[i].centroid = points[rnd];
+      clusters[i].instances = malloc(sizeof(point)*n);
+      
+      dbprintf("Index %d selected as centroid: x=%ld, y=%ld.\n", rnd, clusters[i].centroid.x, clusters[i].centroid.y);
 
    }
-
-   return centroids;
-
+    
 }
 
 double pdistance(point *p1, point *p2) {
 
    // calculates the distance between two points
    
-   dbprintf("distance between (%d, %d) and (%d, %d) = ", p1->x, p1->y, p2->x, p2->y);
+   dbprintf("distance between (%ld, %ld) and (%ld, %ld) = ", p1->x, p1->y, p2->x, p2->y);
 
    double dx = (p1->x - p2->x) * (p1->x - p2->x);
    double dy = (p1->y - p2->y) * (p1->y - p2->y);
@@ -82,6 +87,7 @@ double pdistance(point *p1, point *p2) {
    printf("%f\n", d);
 
    return d;
+    
 }
 
 void pcentroid(point *p) {
@@ -89,33 +95,31 @@ void pcentroid(point *p) {
    // given a point p, find the closest centroid and assign it
    // as the point's centroid property
 
-   double cdist = 9999999;
-   point *c = &centroids[0];
+   double cdist = INT_MAX;
 
-   int m=0;
-   int n=0;
+   int i,j=0;
 
-   for(n=0; n<=5; n++) {
+   for(i=0; i<=k; i++) { //
 
-      double dist = pdistance(p, &centroids[n]);
+      double dist = pdistance(p, &clusters[i].centroid);
 
       dbprintf("current = %f | calculated = %f\n", cdist, dist);
 		
       if(dist < cdist) {
          
-	 dbprintf("cluster change found for (%d, %d).\n", p->x, p->y); 
-         cdist = dist;
-	 c = &centroids[n];
-	 m = n;
+          dbprintf("cluster change found for (%ld, %ld).\n", p->x, p->y);
+     
+          cdist = dist;
+        
+          clusters[i].instances[0] = *p;
+          
+          j = i;
  
       }
 
    }
 
-   dbprintf("centroid x=%d, y=%d is closest.\n", c->x, c->y); 
-   
-   p->centroid = c;
-   p->cluster = m;
+   dbprintf("centroid x=%ld, y=%ld is closest.\n", clusters[j].instances[0].x, clusters[j].instances[0].y);
 
 }
 
@@ -133,7 +137,7 @@ int main(int argc, const char *argv[]) {
 
     // allocate memory for centroids to be used globally
     
-    centroids = (point *) malloc(sizeof(point) * 6) ;
+    clusters = (cluster *) malloc(sizeof(cluster) * 6) ;
 
     if ( argc != 3 ) {   // check passed arguments
         
@@ -156,31 +160,31 @@ int main(int argc, const char *argv[]) {
 	    points = (point *) malloc(sizeof(point) * 3000000);           
             point *p = (point *) malloc(sizeof(point));
            
-	    while(fscanf(input, "%d,%d", &p->x, &p->y) == 2) { 
+	    while(fscanf(input, "%ld,%ld", &p->x, &p->y) == 2) {
                 
-                points[i] = *p;
-          
-                i++;
+                points[n] = *p;
+            
+                n++;
                 
             }
           
-            dbprintf("found %d points in input file.\n", i);
+            dbprintf("found %d points in input file.\n", n);
             
         }
 	
-	point *centroids = find_centroids(k); // get centroids
+        init_centroids(); // initialize centroids
  
  	point *t = (point *) malloc(sizeof(point));
 
-	int n=0;
+	int i=0;
 	
 	// for each data point find the closest centroid
 	// TODO: add additional loops for cluster normalization
 	// TODO: parallelize this iteration with MPI
 	
-	for(n=0; n<=i; n++) {
-		t = &points[n];
-		dbprintf("checking x=%d, y=%d.\n", t->x, t->y);
+	for(i=0; i<=n; i++) {
+		t = &points[i];
+		dbprintf("checking x=%ld, y=%ld.\n", t->x, t->y);
 		pcentroid(t);
 	} 
 
